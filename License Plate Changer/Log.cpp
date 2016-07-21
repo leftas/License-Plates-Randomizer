@@ -5,13 +5,14 @@
 char g_logFile[MAX_PATH];
 bool Log::s_bInitialized;
 bool Log::s_bConsole;
+bool Log::s_bDebugVersion;
 
 
-bool Log::Init(bool createConsole)
+bool Log::Init(bool createConsole, bool DebugMode)
 {
 	FILE* file;
 	memset(g_logFile, 0, sizeof(g_logFile));
-
+	
 	if (GetCurrentDirectoryA(sizeof(g_logFile), g_logFile))
 	{
 		strcat_s(g_logFile, "/LicensePlateChanger.log");
@@ -51,6 +52,7 @@ bool Log::Init(bool createConsole)
 		s_bConsole = true;
 	}
 	s_bInitialized = true;
+	s_bDebugVersion = DebugMode;
 	return true;
 }
 
@@ -78,9 +80,10 @@ void Log::Write(Log::Type type, const char* format, ...)
 		break;
 	case Log::Type::Debug:
 		strcpy_s(logType, "Debug");
-#ifndef _DEBUG
-		return;
-#endif // !DEBUG
+		if (!s_bDebugVersion)
+		{
+			return;
+		}
 		break;
 	case Log::Type::Error:
 		strcpy_s(logType, "Error");

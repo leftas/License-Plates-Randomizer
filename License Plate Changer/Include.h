@@ -8,9 +8,10 @@
 #include <string>
 #include <vector>
 #include <sstream>
+#include <algorithm>
 
 #include "Log.h"
-#include "FileManager.h"
+#include "INIReader.h"
 #include "Pattern.h"
 #include "MinHook.h"
 #endif

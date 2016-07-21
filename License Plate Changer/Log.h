@@ -10,10 +10,11 @@ public:
 		Error,
 		FatalError
 	};
-	static bool Log::Init(bool CreateConsole = false);
+	static bool Log::Init(bool CreateConsole = false, bool DebugMode = false);
 	static void Write(Type type, const char * format, ...);
 private:
 	static bool s_bConsole;
+	static bool s_bDebugVersion;
 	static bool s_bInitialized;
 };
 #endif
