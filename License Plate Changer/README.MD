@@ -1,7 +1,7 @@
-License-Plate-Changer
+License-Plates-Randomizer
 ============================
 
-This plugin allow to chnage GTA V's default license plate randomization into your wanted format.
+This plugin allow to chnage GTA V's default license plate randomization, for all created cars in the game, into your wanted format.
 
 ## Downloads
 
