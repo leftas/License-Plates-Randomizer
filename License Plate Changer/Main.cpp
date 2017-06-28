@@ -108,7 +108,7 @@ bool IsSpace(char c)
 void SettingsFileInitialization()
 {
 	bool debugMode;
-	INIReader* iniReader = new INIReader(".//LicensePlateChanger.ini");
+	INIReader* iniReader = new INIReader(".//LicensePlatesRandomizer.ini");
 	std::string szTempStringHolder;
 	g_szLicensePlateFormatRegularVehicles = new char[16];
 
