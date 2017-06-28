@@ -12,14 +12,16 @@ DWORD64 g_addressToHook;
 HINSTANCE g_hinstThisModule;
 char* g_szLicensePlateFormatRegularVehicles,
 	* g_szLicensePlateFormatSpecialVehicles = nullptr,
-	* g_szCharachtersToExclude[36];
+	  g_szCharachtersToExclude[36];
 DWORD64 g_dwPreviousCVehicle;
+
+void Revert();
 
 bool IsCharAllowed(char chCharacterToCheck)
 {
-	for (int i = 0; i < 36 && g_szCharachtersToExclude[i] != nullptr && g_szCharachtersToExclude[i][0] != '\0'; i++)
+	for (int i = 0; i < 36 && g_szCharachtersToExclude != nullptr && g_szCharachtersToExclude[i] != '\0'; i++)
 	{
-		if (g_szCharachtersToExclude[i][0] == chCharacterToCheck)
+		if (g_szCharachtersToExclude[i] == chCharacterToCheck)
 		{
 			return false;
 		}
@@ -33,7 +35,7 @@ void hkGenerateLicensePlate(__int64 CCustomShaderEffectVehicle, int numberForGen
 	DWORD64 CVehicle;
 
 	memset(pCxtRegisters, 0, sizeof(pCxtRegisters));
-	RtlCaptureContext(pCxtRegisters); // Yes, it's pretty nasty, but I have to do this in first place.
+	RtlCaptureContext(pCxtRegisters); // Yes, it's pretty nasty, but I have do this in a first place.
 
 	CVehicle = pCxtRegisters->Rsi;
 	delete pCxtRegisters;
@@ -48,12 +50,12 @@ void hkGenerateLicensePlate(__int64 CCustomShaderEffectVehicle, int numberForGen
 
 	srand(numberForGeneratingHash + time(nullptr));
 
-	if (g_szLicensePlateFormatSpecialVehicles != nullptr && *reinterpret_cast<BYTE*>(CVehicle + 0x83B) & 2)
+	if (g_szLicensePlateFormatSpecialVehicles != nullptr && *reinterpret_cast<BYTE*>(CVehicle + 0x891) & 4) // Checking for emergency vehicles. And selecting format if user wanted specific format for them.
 	{
 		format = g_szLicensePlateFormatSpecialVehicles;
 	}
 
-	Log::Write(Log::Type::Debug, "Emergency vehicle address to the bit flag: %I64X Emegency Vehicle: %X ", CVehicle, *reinterpret_cast<byte*>(CVehicle + 0x83B));
+	Log::Write(Log::Type::Debug, "Emergency vehicle address to the bit flag: %I64X Emergency Vehicle: %X ", CVehicle, *reinterpret_cast<byte*>(CVehicle + 0x83B));
 
 	formatLength = strlen(format);
 
@@ -74,7 +76,7 @@ void hkGenerateLicensePlate(__int64 CCustomShaderEffectVehicle, int numberForGen
 				break;
 			}
 
-			if (g_szCharachtersToExclude[0] == nullptr || szGeneratedPlate[i] == format[i])
+			if (g_szCharachtersToExclude == nullptr || szGeneratedPlate[i] == format[i]) // Breaking, because if the user wanted this format, we don't need to check if that is allowed char.
 			{
 				break; // nasty
 			}
@@ -132,7 +134,7 @@ void SettingsFileInitialization()
 
 	if (iniReader->GetBoolean("Main", "Enabled", true) == false)
 	{
-		FreeLibraryAndExitThread(g_hinstThisModule, 0);
+		return Revert();
 	}
 
 	szTempStringHolder = iniReader->Get("Main", "ExcludeCharacters", "");
@@ -140,7 +142,7 @@ void SettingsFileInitialization()
 	if (!szTempStringHolder.empty() && szTempStringHolder != " ")
 	{
 		BYTE nCounter = 0;
-		char* tempTokenzier = new char[szTempStringHolder.size() + 1];
+		auto tempTokenzier = new char[szTempStringHolder.size() + 1];
 		char* tempToken;
 		memset(g_szCharachtersToExclude, 0, sizeof(g_szCharachtersToExclude));
 		szTempStringHolder.erase(remove_if(szTempStringHolder.begin(), szTempStringHolder.end(), IsSpace), szTempStringHolder.end());
@@ -149,7 +151,7 @@ void SettingsFileInitialization()
 		tempToken = strtok(tempTokenzier, ",");
 		while (tempToken != nullptr)
 		{
-			g_szCharachtersToExclude[nCounter++] = tempToken;
+			g_szCharachtersToExclude[nCounter++] = *tempToken;
 			tempToken = strtok(nullptr, ",");
 		}
 	}
@@ -162,8 +164,17 @@ void Revert()
 	MH_Uninitialize();
 	oChangeLicensePlate = nullptr;
 	oGenerateLicensePlate = nullptr;
-	delete[] g_szLicensePlateFormatRegularVehicles;
-	delete[] g_szLicensePlateFormatSpecialVehicles;
+
+	if (g_szLicensePlateFormatRegularVehicles != nullptr)
+	{
+		delete[] g_szLicensePlateFormatRegularVehicles;
+	}
+
+	if (g_szLicensePlateFormatSpecialVehicles != nullptr)
+	{
+		delete[] g_szLicensePlateFormatSpecialVehicles;
+	}
+
 	FreeLibraryAndExitThread(g_hinstThisModule, 0);
 }
 
@@ -177,21 +188,23 @@ void GetMainProcessModuleInfo(MODULEINFO& moduleInfo)
 void MainFunction()
 {
 	MODULEINFO moduleInfo;
+
 	DWORD64 dwChangeVehicleLicensePlateFunc,
-		dwCustomShaderEffectVehicleInitInstruction;
+			dwCustomShaderEffectVehicleInitInstruction;
+
 	SettingsFileInitialization();
 
 	GetMainProcessModuleInfo(moduleInfo);
 
 	dwCustomShaderEffectVehicleInitInstruction = Pattern::Scan(moduleInfo, "41 8B D6 48 8B CB E8 ? ? ? ? 48 8B 03") + 3;
 
-	if (dwCustomShaderEffectVehicleInitInstruction == 3)
+	if (dwCustomShaderEffectVehicleInitInstruction == 3) //
 	{
-		Log::Write(Log::Type::Error, "Failed to find a the CustomShaderEffectVehicle initilization function address");
-		Revert();
+		Log::Write(Log::Type::Error, "Failed to find a the CustomShaderEffectVehicle initialization function address");
+		return Revert();
 	}
 
-	//*reinterpret_cast<DWORD*>(dwCustomShaderEffectVehicleInitInstruction) = 0xE8F18948; Was probably bad idea, hahahha.
+	//*reinterpret_cast<DWORD*>(dwCustomShaderEffectVehicleInitInstruction) = 0xE8F18948; Probably was a bad idea, hahahha.
 
 	g_addressToHook = *reinterpret_cast<DWORD*>(dwCustomShaderEffectVehicleInitInstruction + 4) + (dwCustomShaderEffectVehicleInitInstruction + 8);
 
@@ -200,13 +213,13 @@ void MainFunction()
 	if (g_addressToHook == NULL)
 	{
 		Log::Write(Log::Type::Error, "Failed to find a the license plate generator function address");
-		Revert();
+		return Revert();
 	}
 
 	if (MH_Initialize() != MH_OK)
 	{
 		Log::Write(Log::Type::Error, "Failed to initialize MinHook library");
-		Revert();
+		return Revert();
 	}
 
 	Log::Write(Log::Type::Debug, "Successfully initialized MinHook");
@@ -214,30 +227,30 @@ void MainFunction()
 
 	if (MH_CreateHook(reinterpret_cast<LPVOID>(g_addressToHook), hkGenerateLicensePlate, reinterpret_cast<void**>(&oGenerateLicensePlate)) != MH_OK)
 	{
-		Log::Write(Log::Type::Error, "Failed to create the hook onto the function ");
-		Revert();
+		Log::Write(Log::Type::Error, "Failed to create the hook onto the 'GenerateLicensePlate' function ");
+		return Revert();
 	}
 
-	Log::Write(Log::Type::Debug, "Successfully created the hook onto the function");
+	Log::Write(Log::Type::Debug, "Successfully created the hook onto the 'GenerateLicensePlate' function");
 
 
 	if (MH_EnableHook(reinterpret_cast<void*>(g_addressToHook)) != MH_OK)
 	{
-		Log::Write(Log::Type::Error, "Failed to hook the function");
-		Revert();
+		Log::Write(Log::Type::Error, "Failed to hook onto the 'GenerateLicensePlate' function");
+		return Revert();
 	}
 
-	Log::Write(Log::Type::Debug, "Successfully hooked onto the function");
+	Log::Write(Log::Type::Debug, "Successfully hooked onto the 'GenerateLicensePlate' function");
 
 	dwChangeVehicleLicensePlateFunc = *reinterpret_cast<DWORD*>(g_addressToHook + 0x1FD);
 	Log::Write(Log::Type::Debug, "License plate change function relative call address: %X", dwChangeVehicleLicensePlateFunc);
 	dwChangeVehicleLicensePlateFunc += g_addressToHook + 0x201;
-	Log::Write(Log::Type::Debug, "License plate change function abosulute address: %I64X", dwChangeVehicleLicensePlateFunc);
+	Log::Write(Log::Type::Debug, "License plate change function absolute address: %I64X", dwChangeVehicleLicensePlateFunc);
 
 	if (*reinterpret_cast<DWORD64*>(dwChangeVehicleLicensePlateFunc) != 0x74894808245C8948)
 	{
 		Log::Write(Log::Type::Error, "Failed to find 'ChangeVehicleLicensePlate' function");
-		Revert();
+		return Revert();
 	}
 
 	oChangeLicensePlate = reinterpret_cast<tChangeLicensePlate>(dwChangeVehicleLicensePlateFunc);
